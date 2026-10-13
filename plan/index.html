@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tracker Nieobecności z Planem</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <!-- Nagłówek -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-8 bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+            <div>
+                <h1 class="text-3xl font-bold text-slate-800"><i class="fa-solid fa-graduation-cap text-indigo-500 mr-2"></i>Tracker Nieobecności</h1>
+                <p class="text-slate-500 mt-1">Zarządzaj swoimi obecnościami i planem zajęć</p>
+            </div>
+            <div id="connectionStatus" class="mt-4 md:mt-0 px-4 py-2 rounded-full text-sm font-medium bg-yellow-100 text-yellow-700 border border-yellow-200 flex items-center">
+                <i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Łączenie z bazą...
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+            
+            <!-- Lewa kolumna: Dodawanie i Plan -->
+            <div class="md:col-span-5 space-y-6">
+                
+                <!-- Formularz dodawania -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-plus text-indigo-500 mr-2"></i>Dodaj nieobecność</h2>
+                    <form id="absenceForm" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Data</label>
+                            <input type="date" id="date" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Przedmiot</label>
+                            <select id="subject" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                                <option value="" disabled selected>Wybierz przedmiot z planu...</option>
+                                <!-- Opcje dodadzą się automatycznie przez JS -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Notatki (opcjonalnie)</label>
+                            <textarea id="notes" rows="2" placeholder="Np. zaspałem, wizyta u lekarza..." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"></textarea>
+                        </div>
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded-lg transition-colors shadow-sm">
+                            Zapisz nieobecność
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Plan Zajęć -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold flex items-center"><i class="fa-solid fa-calendar-days text-indigo-500 mr-2"></i>Plan Zajęć</h2>
+                    </div>
+                    
+                    <!-- Przełączniki planu -->
+                    <div class="flex space-x-2 mb-4 bg-slate-100 p-1 rounded-lg">
+                        <select id="weekSelect" class="flex-1 bg-white border border-slate-200 text-sm rounded-md p-1.5 outline-none focus:ring-1 focus:ring-indigo-500 font-medium">
+                            <option value="A">Tydzień A</option>
+                            <option value="B">Tydzień B</option>
+                        </select>
+                        <select id="groupSelect" class="flex-1 bg-white border border-slate-200 text-sm rounded-md p-1.5 outline-none focus:ring-1 focus:ring-indigo-500 font-medium">
+                            <option value="GL1">Grupa GL1</option>
+                            <option value="GL2">Grupa GL2</option>
+                        </select>
+                    </div>
+
+                    <div id="planContainer" class="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                        <!-- Plan wygeneruje się tutaj -->
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Prawa kolumna: Podsumowanie i Historia -->
+            <div class="md:col-span-7 space-y-6">
+                
+                <!-- Podsumowanie -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-chart-pie text-indigo-500 mr-2"></i>Licznik nieobecności</h2>
+                    <div id="summaryContainer" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <p class="text-slate-500 text-sm col-span-full">Brak dodanych nieobecności.</p>
+                    </div>
+                </div>
+
+                <!-- Historia -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-clock-rotate-left text-indigo-500 mr-2"></i>Historia</h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
+                                    <th class="pb-3 font-semibold">Data</th>
+                                    <th class="pb-3 font-semibold">Przedmiot</th>
+                                    <th class="pb-3 font-semibold">Notatki</th>
+                                    <th class="pb-3 font-semibold text-right">Akcja</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTable" class="text-sm">
+                                <tr>
+                                    <td colspan="4" class="py-6 text-center text-slate-400">Ładowanie danych...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // DANE PLANU ZAJĘĆ Z GODZINAMI
+        // ==========================================
+        const planData = [
+            // Poniedziałek
+            { day: 1, time: "08:15 - 09:45", name: "Algorytmy i struktury danych (Wykład)", type: "Wykład - s. B4 IBS", week: "both", group: "both" },
+            { day: 1, time: "10:00 - 11:30", name: "Algorytmy i struktury danych (Lab)", type: "Laboratorium - s. A204 IBS", week: "A", group: "GL1" },
+            { day: 1, time: "10:00 - 11:30", name: "Algorytmy i struktury danych (Lab)", type: "Laboratorium - s. A204 IBS", week: "B", group: "GL2" },
+            { day: 1, time: "12:15 - 13:45", name: "Materiałoznawstwo dla informatyków (Lab)", type: "Laboratorium - s. A204 IBS", week: "A", group: "GL1" },
+            { day: 1, time: "12:15 - 13:45", name: "Materiałoznawstwo dla informatyków (Lab)", type: "Laboratorium - s. A204 IBS", week: "B", group: "GL2" },
+            { day: 1, time: "14:15 - 15:45", name: "Logika w programowaniu (Wykład)", type: "Wykład - s. B8 IBS", week: "both", group: "both" },
+            { day: 1, time: "16:00 - 18:15", name: "Logika w programowaniu (Lab)", type: "Laboratorium - s. B8 IBS", week: "A", group: "GL1" },
+            { day: 1, time: "16:00 - 18:15", name: "Logika w programowaniu (Lab)", type: "Laboratorium - s. B8 IBS", week: "B", group: "GL2" },
+            
+            // Wtorek
+            { day: 2, time: "08:30 - 10:00", name: "Zarządzanie sieciami komputerowymi (Wykład)", type: "Wykład - s. A100 IBS", week: "both", group: "both" },
+            { day: 2, time: "10:15 - 11:45", name: "Statystyka matematyczna (Wykład)", type: "Wykład - s. A CMAX", week: "both", group: "both" },
+            { day: 2, time: "11:45 - 13:15", name: "Język angielski", type: "Lektorat", week: "both", group: "both" },
+            { day: 2, time: "13:30 - 15:00", name: "Statystyka matematyczna (Lab)", type: "Laboratorium - s. 253 CMAX", week: "both", group: "GL1" },
+            { day: 2, time: "15:00 - 16:30", name: "Język niemiecki", type: "Lektorat", week: "both", group: "both" },
+            { day: 2, time: "16:45 - 18:15", name: "Statystyka matematyczna (Lab)", type: "Laboratorium - s. 254 CMAX", week: "both", group: "GL2" },
+
+            // Środa
+            { day: 3, time: "08:15 - 09:45", name: "Materiałoznawstwo dla informatyków (Wykład)", type: "Wykład - s. B7 IBS", week: "A", group: "both" },
+            { day: 3, time: "10:00 - 11:30", name: "Programowanie baz danych (Wykład)", type: "Wykład - s. A100 IBS", week: "both", group: "both" },
+            { day: 3, time: "11:45 - 13:15", name: "Programowanie baz danych (Lab)", type: "Laboratorium - s. A204 IBS", week: "both", group: "GL1" },
+            { day: 3, time: "11:45 - 13:15", name: "Zarządzanie sieciami komputerowymi (Lab)", type: "Laboratorium - s. A200 IBS", week: "both", group: "GL2" },
+            { day: 3, time: "13:30 - 15:00", name: "Zarządzanie sieciami komputerowymi (Lab)", type: "Laboratorium - s. A200 IBS", week: "both", group: "GL1" },
+            { day: 3, time: "13:30 - 15:00", name: "Programowanie baz danych (Lab)", type: "Laboratorium - s. A204 IBS", week: "both", group: "GL2" },
+
+            // Czwartek
+            { day: 4, time: "08:00 - 09:30", name: "Podstawy biologii (Wykład)", type: "Wykład - s. CN-7 COLL", week: "both", group: "both" },
+            { day: 4, time: "09:30 - 11:00", name: "Podstawy biologii (Lab)", type: "Laboratorium - s. 349 WLTD", week: "both", group: "GL1" },
+            { day: 4, time: "10:15 - 11:45", name: "Podstawy biologii (Lab)", type: "Laboratorium - s. 349 WLTD", week: "both", group: "GL2" },
+            { day: 4, time: "11:00 - 12:30", name: "Narzędzia informatyczne w PM (Wykład)", type: "Wykład - s. A209 IBS", week: "both", group: "both" },
+            { day: 4, time: "12:45 - 14:15", name: "Narzędzia informatyczne w PM (Lab)", type: "Laboratorium - s. A209 IBS", week: "A", group: "GL1" },
+            { day: 4, time: "12:45 - 14:15", name: "Narzędzia informatyczne w PM (Lab)", type: "Laboratorium - s. A209 IBS", week: "B", group: "GL2" }
+        ];
+
+        // Inicjalizacja formularza i planu
+        function initAppUI() {
+            const subjectSelect = document.getElementById('subject');
+            const uniqueSubjects = [...new Set(planData.map(item => item.name))].sort();
+            uniqueSubjects.forEach(sub => {
+                const option = document.createElement('option');
+                option.value = sub;
+                option.textContent = sub;
+                subjectSelect.appendChild(option);
+            });
+
+            document.getElementById('date').valueAsDate = new Date();
+            renderPlan();
+            document.getElementById('weekSelect').addEventListener('change', renderPlan);
+            document.getElementById('groupSelect').addEventListener('change', renderPlan);
+        }
+
+        function renderPlan() {
+            const week = document.getElementById('weekSelect').value;
+            const group = document.getElementById('groupSelect').value;
+            const planContainer = document.getElementById('planContainer');
+            
+            const daysNames = ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek"];
+            let html = '';
+            
+            daysNames.forEach((dayName, index) => {
+                const dayIndex = index + 1;
+                // Filtrujemy zajęcia dla danego dnia, tygodnia i grupy
+                let dayClasses = planData.filter(item => 
+                    item.day === dayIndex && 
+                    (item.week === 'both' || item.week === week) &&
+                    (item.group === 'both' || item.group === group)
+                );
+                
+                // Sortujemy zajęcia godzinowo
+                dayClasses.sort((a, b) => a.time.localeCompare(b.time));
+
+                if (dayClasses.length > 0) {
+                    html += `
+                    <div class="mb-5">
+                        <h4 class="font-bold text-slate-700 border-b-2 border-indigo-100 pb-1 mb-3">${dayName}</h4>
+                        <ul class="space-y-2">`;
+                    dayClasses.forEach(cls => {
+                        let borderColor = cls.name.includes('(Wykład)') ? 'border-yellow-400' : 'border-blue-400';
+                        if(cls.name.includes('Lektorat') || cls.name.includes('Język')) borderColor = 'border-green-400';
+
+                        html += `
+                        <li class="bg-slate-50 p-3 rounded-md border-l-4 ${borderColor} shadow-sm flex items-start gap-4">
+                            <div class="text-xs font-bold text-slate-500 w-[85px] mt-0.5 shrink-0"><i class="fa-regular fa-clock mr-1"></i>${cls.time}</div>
+                            <div>
+                                <span class="font-semibold text-slate-800 block text-sm">${cls.name}</span>
+                                <span class="text-xs text-slate-500 mt-1 block"><i class="fa-solid fa-location-dot mr-1"></i>${cls.type}</span>
+                            </div>
+                        </li>`;
+                    });
+                    html += `</ul></div>`;
+                } else if (dayIndex <= 5) {
+                    html += `
+                    <div class="mb-5">
+                        <h4 class="font-bold text-slate-700 border-b-2 border-indigo-100 pb-1 mb-3">${dayName}</h4>
+                        <p class="text-sm text-slate-400 italic">Brak zajęć w ten dzień 🎉</p>
+                    </div>`;
+                }
+            });
+            
+            planContainer.innerHTML = html;
+        }
+
+        initAppUI();
+// ==========================================
+        // KONFIGURACJA FIREBASE
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyB8ihChRcFau2cplBQue0PIagtwkC9PLdA",
+            authDomain: "plan-46930.firebaseapp.com",
+            projectId: "plan-46930",
+            storageBucket: "plan-46930.firebasestorage.app",
+            messagingSenderId: "103303807214",
+            appId: "1:103303807214:web:7fae149b398e2fe837b3ff",
+            measurementId: "G-NT72Z118YD"
+        };
+        // =================================================================================
+
+        const statusBadge = document.getElementById('connectionStatus');
+        let db;
+
+        try {
+            if (firebaseConfig.apiKey === "TWÓJ_KLUCZ_API") {
+                throw new Error("Wklej poprawną konfigurację Firebase w kodzie!");
+            }
+            
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            
+            statusBadge.innerHTML = '<i class="fa-solid fa-check-circle mr-2"></i> Połączono';
+            statusBadge.className = "mt-4 md:mt-0 px-4 py-2 rounded-full text-sm font-medium bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center";
+            
+            loadAbsences();
+        } catch (error) {
+            console.error(error);
+            statusBadge.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-2"></i> Brak połączenia z bazą';
+            statusBadge.className = "mt-4 md:mt-0 px-4 py-2 rounded-full text-sm font-medium bg-rose-100 text-rose-700 border border-rose-200 flex items-center";
+            document.getElementById('historyTable').innerHTML = `<tr><td colspan="4" class="py-6 text-center text-rose-500">Brak połączenia z bazą danych. Zaktualizuj klucze Firebase w pliku index.html, aby to naprawić.</td></tr>`;
+        }
+
+        document.getElementById('absenceForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if(!db) return alert("Najpierw musisz skonfigurować klucze Firebase w kodzie!");
+
+            const date = document.getElementById('date').value;
+            const subject = document.getElementById('subject').value;
+            const notes = document.getElementById('notes').value;
+            const btn = e.target.querySelector('button');
+            
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Zapisywanie...';
+            btn.disabled = true;
+
+            try {
+                await db.collection('absences').add({
+                    date: date,
+                    subject: subject,
+                    notes: notes,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                document.getElementById('absenceForm').reset();
+                document.getElementById('date').valueAsDate = new Date();
+            } catch (error) {
+                alert("Błąd podczas dodawania: " + error.message);
+            } finally {
+                btn.innerHTML = 'Zapisz nieobecność';
+                btn.disabled = false;
+            }
+        });
+
+        function loadAbsences() {
+            db.collection('absences').orderBy('date', 'desc').onSnapshot((snapshot) => {
+                const historyTable = document.getElementById('historyTable');
+                const summaryContainer = document.getElementById('summaryContainer');
+                
+                if (snapshot.empty) {
+                    historyTable.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">Brak wpisów o nieobecnościach.</td></tr>';
+                    summaryContainer.innerHTML = '<p class="text-slate-500 text-sm col-span-full">Wszystko na bieżąco, brak nieobecności!</p>';
+                    return;
+                }
+
+                let historyHTML = '';
+                const summary = {};
+
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const id = doc.id;
+                    
+                    summary[data.subject] = (summary[data.subject] || 0) + 1;
+                    const dateObj = new Date(data.date);
+                    const formattedDate = dateObj.toLocaleDateString('pl-PL');
+
+                    historyHTML += `
+                        <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                            <td class="py-3 pr-4 font-medium text-slate-800 whitespace-nowrap">${formattedDate}</td>
+                            <td class="py-3 pr-4 text-slate-700">${data.subject}</td>
+                            <td class="py-3 pr-4 text-slate-500 text-sm max-w-[200px] truncate" title="${data.notes}">${data.notes || '-'}</td>
+                            <td class="py-3 text-right">
+                                <button onclick="deleteAbsence('${id}')" class="text-rose-500 hover:text-rose-700 p-2 rounded-lg hover:bg-rose-50 transition-colors" title="Usuń wpis">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                historyTable.innerHTML = historyHTML;
+
+                let summaryHTML = '';
+                for (const [subj, count] of Object.entries(summary)) {
+                    summaryHTML += `
+                        <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 flex flex-col items-center text-center">
+                            <span class="text-2xl font-bold text-indigo-600">${count}</span>
+                            <span class="text-xs text-slate-600 mt-1 line-clamp-2" title="${subj}">${subj}</span>
+                        </div>
+                    `;
+                }
+                summaryContainer.innerHTML = summaryHTML;
+            }, (error) => {
+                console.error("Błąd pobierania:", error);
+            });
+        }
+
+        window.deleteAbsence = async (id) => {
+            if(confirm("Czy na pewno chcesz usunąć ten wpis?")) {
+                try {
+                    await db.collection('absences').doc(id).delete();
+                } catch(error) {
+                    alert("Błąd usuwania: " + error.message);
+                }
+            }
+        };
+    </script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9; 
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+</body>
+</html>
